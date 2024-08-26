@@ -6,22 +6,31 @@ on:
   schedule:
     - cron: '0 1 1 * *'
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
 jobs:
   create:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
       - name: Install dependencies
         run: pip install --no-cache-dir -r requirements.lock -r requirements-dev.lock
       - name: Create map
         run: python main.py
         env:
-          GH_TOKEN: ${{ secrets.TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           TOM_TOM_TOKEN: ${{ secrets.TOM_TOM_TOKEN }}
           GH_USER: nvuillam
+          ADDITIONAL_REPOS: hardisgroupcom/sfdx-hardis,oxsecurity/megalinter
       - name: Commit new map
         run: |
           git config --global user.name 'Globe Bot'

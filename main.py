@@ -9,7 +9,7 @@ from github import Github, RateLimitExceededException
 from github_dependents_info import GithubDependentsInfo
 
 
-def collect(gh_token, geo_token, user):
+def collect(gh_token: str, geo_token: str, user: str, additional_repos: str):
     geo_locations = {}
     user_locations = {}
 
@@ -33,36 +33,30 @@ def collect(gh_token, geo_token, user):
     gh = Github(login_or_token=gh_token)
     nn = TomTom(api_key=geo_token)
     base_user = get_user(gh, user)
-    repos = get_repos(base_user)
+    repos = get_repos(gh, base_user)
+
+    if additional_repos is not None:
+        for repo in additional_repos.split(","):
+            additional_repo = {
+                "full_name": repo,
+                "name": repo.split("/")[1]
+            }
+            repos.append(additional_repo)
 
     location_details = set()
 
     for repo in repos:
-        print("checking: " + repo.name)
-        gh_deps_info = GithubDependentsInfo(repo.full_name)
+        print("checking: " + repo["name"])
+        gh_deps_info = GithubDependentsInfo(repo["full_name"])
         gh_deps_info.collect()
         for package in gh_deps_info.packages:
+            # Handle dependent package owner user
             for dependent in package["public_dependents"]:
                 user_name = dependent["name"].split("/")[0]
-                location = ""
-                if user_name in user_locations:
-                    location = user_locations[user_name]
-                else:
-                    repo_user = get_user(gh, user_name)
-                    if repo_user.location is not None:
-                        location = repo_user.location
-                if location:
-                    if any(c.isalpha() for c in location):
-                        if location not in geo_locations:
-                            try:
-                                geo_locations[location] = nn.geocode(location)
-                            except GeopyError:
-                                print("ignoring:" + location)
-                        if location in geo_locations and geo_locations[location] is not None:
-                            geo_location = geo_locations[location]
-                            if hasattr(geo_location, 'latitude') and hasattr(geo_location, 'longitude'):
-                                u = Usage(user_name, location, geo_location.latitude, geo_location.longitude)
-                                location_details.add(u)
+                handle_user_location(geo_locations, user_locations, gh, nn, location_details, user_name)
+                # Handle dependent package stargazers
+                for stargazer in repo["stargazers"]:
+                    handle_user_location(geo_locations, user_locations, gh, nn, location_details, stargazer)
 
     features = []
     for usage in location_details:
@@ -74,6 +68,27 @@ def collect(gh_token, geo_token, user):
 
     with open("global_usage.json", 'w') as data_file:
         data_file.write(dumps(FeatureCollection(features)))
+
+def handle_user_location(geo_locations, user_locations, gh, nn, location_details, user_name):
+    location = ""
+    if user_name in user_locations:
+        location = user_locations[user_name]
+    else:
+        repo_user = get_user(gh, user_name)
+        if repo_user.location is not None:
+            location = repo_user.location
+    if location:
+        if any(c.isalpha() for c in location):
+            if location not in geo_locations:
+                try:
+                    geo_locations[location] = nn.geocode(location)
+                except GeopyError:
+                    print("ignoring:" + location)
+            if location in geo_locations and geo_locations[location] is not None:
+                geo_location = geo_locations[location]
+                if hasattr(geo_location, 'latitude') and hasattr(geo_location, 'longitude'):
+                    u = Usage(user_name, location, geo_location.latitude, geo_location.longitude)
+                    location_details.add(u)
 
 
 def create_map():
@@ -97,12 +112,21 @@ def create_map():
             svg_image.write(f, pretty=True)
 
 
-def get_repos(base_user):
+def get_repos(gh, base_user):
     try:
-        return base_user.get_repos()
+        repos = base_user.get_repos()
+        repos_dicts = []
+        for repo in repos:
+            repo_dict = {
+                "full_name": repo.full_name,
+                "name": repo.name,
+                "stargazers": get_repo_stargazers(gh, repo)
+            }
+            repos_dicts.append(repo_dict)
+        return repos_dicts
     except RateLimitExceededException as e:
         handle_rate_limit(e)
-        return get_repos(base_user)
+        return get_repos(gh, base_user)
 
 
 def get_user(gh, user):
@@ -111,6 +135,13 @@ def get_user(gh, user):
     except RateLimitExceededException as e:
         handle_rate_limit(e)
         return get_user(gh, user)
+
+def get_repo_stargazers(gh, repo):
+    try:
+        return list(repo.get_stargazers().keys())
+    except RateLimitExceededException as e:
+        handle_rate_limit(e)
+        return get_repo_stargazers(gh, repo)
 
 
 class Usage:
@@ -138,5 +169,5 @@ def handle_rate_limit(e):
 
 
 if __name__ == '__main__':
-    collect(os.getenv('GH_TOKEN'), os.getenv('TOM_TOM_TOKEN'), os.getenv('GH_USER'))
+    collect(os.getenv('GH_TOKEN'), os.getenv('TOM_TOM_TOKEN'), os.getenv('GH_USER'), os.getenv('ADDITIONAL_REPOS',None))
     create_map()
