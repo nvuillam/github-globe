@@ -56,7 +56,7 @@ def collect(gh_token: str, geo_token: str, user: str, additional_repos: str):
                 handle_user_location(geo_locations, user_locations, gh, nn, location_details, user_name)
                 # Handle dependent package stargazers
                 for stargazer in repo["stargazers"]:
-                    handle_user_location(geo_locations, user_locations, gh, nn, location_details, stargazer)
+                    handle_user_location(geo_locations, user_locations, gh, nn, location_details, stargazer.login)
 
     features = []
     for usage in location_details:
@@ -138,7 +138,7 @@ def get_user(gh, user):
 
 def get_repo_stargazers(gh, repo):
     try:
-        return list(repo.get_stargazers().keys())
+        return repo.get_stargazers()
     except RateLimitExceededException as e:
         handle_rate_limit(e)
         return get_repo_stargazers(gh, repo)
