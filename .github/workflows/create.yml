@@ -21,11 +21,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.TOKEN }}
           TOM_TOM_TOKEN: ${{ secrets.TOM_TOM_TOKEN }}
-          GH_USER: elgohr
+          GH_USER: nvuillam
       - name: Commit new map
         run: |
           git config --global user.name 'Globe Bot'
-          git config --global user.email 'noreply@gohr.digital'
+          git config --global user.email 'nicolas.vuillamy@gmail.com'
           git add .
           git commit -m ":arrow_up: Updated Map"
           git pull -r
